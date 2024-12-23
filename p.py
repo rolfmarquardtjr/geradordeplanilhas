@@ -13,7 +13,9 @@ BRASIL_COORDS = {
 }
 
 nomes = ["Miguel", "Arthur", "Heitor", "Helena", "Alice", "Laura", "Theo", "Davi", "Gabriel",
-        "Bernardo", "Samuel", "Valentina", "Sophia", "Isabella", "Manuela", "Luísa", "Pedro"]
+        "Bernardo", "Samuel", "Valentina", "Sophia", "Isabella", "Manuela", "Luísa", "Pedro",
+        "Lorenzo", "Benjamin", "Matheus", "Lucas", "Nicolas", "Joaquim", "Vicente", "Eduardo",
+        "Daniel", "Henrique", "Murilo", "Rafael", "João Miguel", "Lucca", "Guilherme", "Felipe"]
 
 sobrenomes = ["Silva", "Santos", "Oliveira", "Souza", "Rodrigues", "Ferreira", "Alves", "Pereira",
              "Lima", "Gomes", "Costa", "Ribeiro", "Martins", "Carvalho", "Almeida", "Lopes"]
@@ -54,9 +56,13 @@ def gerar_telefone():
    numero = random.randint(900000000, 999999999)
    return f"({ddd}) {numero:9d}"
 
-def gerar_senha():
-   caracteres = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-   return ''.join(random.choice(caracteres) for _ in range(12))
+def gerar_data_nascimento():
+   start_date = datetime(1970, 1, 1)
+   end_date = datetime(2000, 12, 31)
+   days_between = (end_date - start_date).days
+   random_days = random.randint(0, days_between)
+   data = start_date + timedelta(days=random_days)
+   return data.strftime("%d/%m/%Y")
 
 def gerar_data_recente():
    hoje = datetime.now()
@@ -66,43 +72,41 @@ def gerar_data_recente():
                       minute=random.randint(0, 59), 
                       second=random.randint(0, 59))
 
-def processar_planilhas(usuarios_df):
-   dados_globais = []
-   telemetria_dados = []
+def criar_planilha_usuarios(num_usuarios):
+   usuarios_df = pd.DataFrame(columns=[
+       'nome', 'sobrenome', 'cpf', 'email', 'senha', 'Grupos', 'perfil', 
+       'Telefone', 'Observações', 'CNH', 'Categoria da CNH', 
+       'Nº de Segurança da CNH', 'Renach', 'Data de Nascimento', 'id_operador'
+   ])
    
-   for i in range(len(usuarios_df)):
+   dados_usuarios = []
+   for _ in range(num_usuarios):
        nome, sobrenome, email = gerar_nome_email()
-       novo_id = gerar_id_operador()
-       
        dados_usuario = {
            'nome': nome,
            'sobrenome': sobrenome,
-           'email': email,
            'cpf': gerar_cpf(),
-           'senha': gerar_senha(),
+           'email': email,
+           'senha': 'senha123',
+           'Grupos': 'Motoristas',
+           'perfil': 'Condutor',
            'Telefone': gerar_telefone(),
+           'Observações': f'Observação do usuário {_ + 1}',
+           'CNH': gerar_num_seguranca(),
+           'Categoria da CNH': random.choice(['A', 'B', 'C', 'D', 'E', 'AB', 'AC', 'AD', 'AE']),
            'Nº de Segurança da CNH': gerar_num_seguranca(),
            'Renach': gerar_renach(),
-           'Grupos': random.choice(['Motoristas', 'Operadores']),
-           'perfil': random.choice(['Condutor', 'Operador']),
-           'CNH': ''.join([str(random.randint(0, 9)) for _ in range(11)]),
-           'Categoria da CNH': random.choice(['A', 'B', 'C', 'D', 'E', 'AB', 'AC', 'AD', 'AE']),
-           'id_operador': novo_id
+           'Data de Nascimento': gerar_data_nascimento(),
+           'id_operador': gerar_id_operador()
        }
-       
-       dados_globais.append(dados_usuario)
-       
-       for campo, valor in dados_usuario.items():
-           if campo in usuarios_df.columns and pd.isna(usuarios_df.at[i, campo]):
-               usuarios_df.at[i, campo] = valor
+       dados_usuarios.append(dados_usuario)
    
-   telemetria_df = gerar_dados_telemetria(dados_globais)
-   return usuarios_df, telemetria_df
+   return pd.DataFrame(dados_usuarios)
 
-def gerar_dados_telemetria(usuarios_dados):
+def gerar_dados_telemetria(usuarios_df):
    dados_telemetria = []
    
-   for usuario in usuarios_dados:
+   for _, usuario in usuarios_df.iterrows():
        num_registros = random.randint(5, 15)
        
        for _ in range(num_registros):
@@ -121,42 +125,37 @@ def gerar_dados_telemetria(usuarios_dados):
 def main():
    st.title("Gerador de Dados - Usuários e Telemetria")
    
-   uploaded_file = st.file_uploader("Upload da planilha de usuários (XLSX)", type=['xlsx'])
+   num_usuarios = st.number_input("Número de usuários a serem gerados", 
+                                min_value=1, max_value=1000, value=100)
    
-   if uploaded_file:
-       try:
-           usuarios_df = pd.read_excel(uploaded_file)
+   if st.button("Gerar Planilhas"):
+       usuarios_df = criar_planilha_usuarios(num_usuarios)
+       telemetria_df = gerar_dados_telemetria(usuarios_df)
+       
+       st.write("Preview - Usuários gerados:")
+       st.dataframe(usuarios_df.head())
+       
+       st.write("Preview - Telemetria:")
+       st.dataframe(telemetria_df.head())
+       
+       zip_buffer = BytesIO()
+       with zipfile.ZipFile(zip_buffer, 'w') as zf:
+           usuarios_buffer = BytesIO()
+           with pd.ExcelWriter(usuarios_buffer, engine='openpyxl') as writer:
+               usuarios_df.to_excel(writer, index=False)
+           zf.writestr('usuarios_gerados.xlsx', usuarios_buffer.getvalue())
            
-           if st.button("Processar e Baixar Planilhas"):
-               usuarios_preenchidos, telemetria_df = processar_planilhas(usuarios_df.copy())
-               
-               st.write("Preview - Usuários preenchidos:")
-               st.dataframe(usuarios_preenchidos.head())
-               
-               st.write("Preview - Telemetria:")
-               st.dataframe(telemetria_df.head())
-               
-               zip_buffer = BytesIO()
-               with zipfile.ZipFile(zip_buffer, 'w') as zf:
-                   usuarios_buffer = BytesIO()
-                   with pd.ExcelWriter(usuarios_buffer, engine='openpyxl') as writer:
-                       usuarios_preenchidos.to_excel(writer, index=False)
-                   zf.writestr('usuarios_preenchidos.xlsx', usuarios_buffer.getvalue())
-                   
-                   telemetria_buffer = BytesIO()
-                   with pd.ExcelWriter(telemetria_buffer, engine='openpyxl') as writer:
-                       telemetria_df.to_excel(writer, index=False)
-                   zf.writestr('telemetria_preenchida.xlsx', telemetria_buffer.getvalue())
-               
-               st.download_button(
-                   "Download Planilhas (ZIP)",
-                   zip_buffer.getvalue(),
-                   "planilhas.zip",
-                   "application/zip"
-               )
-               
-       except Exception as e:
-           st.error(f"Erro ao processar arquivo: {str(e)}")
+           telemetria_buffer = BytesIO()
+           with pd.ExcelWriter(telemetria_buffer, engine='openpyxl') as writer:
+               telemetria_df.to_excel(writer, index=False)
+           zf.writestr('telemetria_gerada.xlsx', telemetria_buffer.getvalue())
+       
+       st.download_button(
+           "Download Planilhas (ZIP)",
+           zip_buffer.getvalue(),
+           "planilhas_geradas.zip",
+           "application/zip"
+       )
 
 if __name__ == "__main__":
    main()
